@@ -1,44 +1,81 @@
-# src/models/synapse.py
 import numpy as np
 
 class Synapse:
     """
-    Represents a plastic connection between a pre-synaptic and a post-synaptic neuron.
-    Implements the STDP (Spike-Timing-Dependent Plasticity) learning rule.
+    Represents a plastic connection (Synapse) between two neurons.
+    Implements the STDP learning rule, gated by a neuromodulator (Dopamine).
     """
-    def __init__(self, initial_weight=0.1, tau_stdp=20.0, eta=0.005):
-        self.weight = initial_weight # Synaptic weight (strength of the connection)
-        self.tau_stdp = tau_stdp     # Time constant for the STDP time window (in ms)
-        self.eta = eta               # Learning rate (how fast weights change)
+    def __init__(self, initial_weight=0.1, tau_stdp=20.0, eta=0.005, dopa_gate_thresh=0.4):
+        self.weight = initial_weight
+        self.tau_stdp = tau_stdp    
+        self.eta = eta              
+        self.dopa_gate_thresh = dopa_gate_thresh # New: Dopamine threshold to enable learning
         
-        # Time traces: Exponentially decaying records of recent spikes.
         self.pre_trace = 0.0         
         self.post_trace = 0.0
 
-    def update_traces(self, pre_spiked, post_spiked, dt):
-        """Updates the pre- and post-synaptic time traces and applies the STDP weight change."""
+    def get_output_current(self, pre_spiked):
+        """Calculates the current injected into the post-synaptic neuron."""
+        if pre_spiked:
+            return self.weight * 5.0 
+        return 0.0
+        
+    def update_traces(self, pre_spiked, post_spiked, dt, dopamine_level):
+        """
+        Updates traces and applies GATED STDP: learning is only enabled if dopamine 
+        is above the defined threshold.
+        """
         
         # 1. Decay the traces (forgetting old spikes)
         self.pre_trace *= np.exp(-dt / self.tau_stdp)
         self.post_trace *= np.exp(-dt / self.tau_stdp)
 
-        # 2. Apply STDP (learning)
-        if pre_spiked:
-            # Pre-before-Post: Strengthen (LTP). Depends on how recently the post-neuron fired.
-            self.weight += self.eta * self.post_trace
-            self.pre_trace += 1.0 # Boost the pre-trace for future post-spikes
+        # 2. Check the Dopamine Gate
+        is_learning_enabled = (dopamine_level >= self.dopa_gate_thresh)
         
-        if post_spiked:
-            # Post-before-Pre: Weaken (LTD). Depends on how recently the pre-neuron fired.
-            self.weight -= self.eta * self.pre_trace
-            self.post_trace += 1.0 # Boost the post-trace for future pre-spikes
+        # 3. Apply STDP (Learning) ONLY if the gate is open
+        if is_learning_enabled:
+            
+            # --- Potentiation (Pre-before-Post) ---
+            if pre_spiked:
+                # FIX: We use a larger multiplier (5.0) for LTP to ensure net growth
+                self.weight += self.eta * self.post_trace * 5.0
+                self.pre_trace += 1.0 
+            
+            # --- Depression (Post-before-Pre) ---
+            if post_spiked:
+                # LTD remains with a standard multiplier (1.0)
+                self.weight -= self.eta * self.pre_trace * 1.0
+                self.post_trace += 1.0 
 
-        # 3. Clip weights (maintain stability)
+        # 4. Clip weights (maintain stability)
         self.weight = np.clip(self.weight, 0.0, 1.0)
+        """
+        Updates traces and applies GATED STDP: learning is only enabled if dopamine 
+        is above the defined threshold.
+        """
         
-    def get_output_current(self, pre_spiked):
-        """Calculates the current injected into the post-synaptic neuron."""
-        if pre_spiked:
-            # Inject current proportional to the weight (5.0 is an arbitrary scaling factor)
-            return self.weight * 5.0 
-        return 0.0
+        # 1. Decay the traces (forgetting old spikes)
+        self.pre_trace *= np.exp(-dt / self.tau_stdp)
+        self.post_trace *= np.exp(-dt / self.tau_stdp)
+
+        # 2. Check the Dopamine Gate
+        is_learning_enabled = (dopamine_level >= self.dopa_gate_thresh)
+        
+        # 3. Apply STDP (Learning) ONLY if the gate is open
+        if is_learning_enabled:
+            
+            # --- Potentiation (Pre-before-Post) ---
+            if pre_spiked:
+                # The strength of learning is proportional to the post-trace (recency of post-spike)
+                self.weight += self.eta * self.post_trace
+                self.pre_trace += 1.0 # Boost the pre-trace
+            
+            # --- Depression (Post-before-Pre) ---
+            if post_spiked:
+                # The strength of un-learning is proportional to the pre-trace
+                self.weight -= self.eta * self.pre_trace
+                self.post_trace += 1.0 # Boost the post-trace
+
+        # 4. Clip weights (maintain stability)
+        self.weight = np.clip(self.weight, 0.0, 1.0)
