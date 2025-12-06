@@ -19,18 +19,23 @@ class Synapse:
         if pre_spiked:
             return self.weight * 5.0 
         return 0.0
-        
+         
     def update_traces(self, pre_spiked, post_spiked, dt, dopamine_level):
         """
         Updates traces and applies GATED STDP: learning is only enabled if dopamine 
         is above the defined threshold.
-        """
+        """  
         
-        # 1. Decay the traces (forgetting old spikes)
+        # 1. Decay the traces
         self.pre_trace *= np.exp(-dt / self.tau_stdp)
         self.post_trace *= np.exp(-dt / self.tau_stdp)
 
-        # 2. Check the Dopamine Gate
+        # 2. BOOST TRACES (Register the spikes in the current time step) - CRITICAL FIX
+        if pre_spiked:
+            self.pre_trace += 1.0 
+        if post_spiked:
+            self.post_trace += 1.0 
+
         is_learning_enabled = (dopamine_level >= self.dopa_gate_thresh)
         
         # 3. Apply STDP (Learning) ONLY if the gate is open
@@ -38,17 +43,15 @@ class Synapse:
             
             # --- Potentiation (Pre-before-Post) ---
             if pre_spiked:
-                # FIX: We use a larger multiplier (5.0) for LTP to ensure net growth
-                self.weight += self.eta * self.post_trace * 5.0
-                self.pre_trace += 1.0 
+                # Weight change now uses the freshly boosted self.post_trace
+                self.weight += self.eta * self.post_trace * 5.0 
             
             # --- Depression (Post-before-Pre) ---
             if post_spiked:
-                # LTD remains with a standard multiplier (1.0)
+                # Weight change now uses the freshly boosted self.pre_trace
                 self.weight -= self.eta * self.pre_trace * 1.0
-                self.post_trace += 1.0 
 
-        # 4. Clip weights (maintain stability)
+        # 4. Clip weights
         self.weight = np.clip(self.weight, 0.0, 1.0)
         """
         Updates traces and applies GATED STDP: learning is only enabled if dopamine 
@@ -68,13 +71,13 @@ class Synapse:
             # --- Potentiation (Pre-before-Post) ---
             if pre_spiked:
                 # The strength of learning is proportional to the post-trace (recency of post-spike)
-                self.weight += self.eta * self.post_trace
+                self.weight += self.eta * self.post_trace * 5.0
                 self.pre_trace += 1.0 # Boost the pre-trace
             
             # --- Depression (Post-before-Pre) ---
             if post_spiked:
                 # The strength of un-learning is proportional to the pre-trace
-                self.weight -= self.eta * self.pre_trace
+                self.weight -= self.eta * self.pre_trace * 1.0
                 self.post_trace += 1.0 # Boost the post-trace
 
         # 4. Clip weights (maintain stability)

@@ -1,88 +1,101 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from src.models.lif_neuron import LIFNeuron
-from src.models.synapse import Synapse
+from src.core.network import MicroCircuit
 
-# === 1. Simulation Setup ===
-T = 600    # Total simulation time in ms (600 ms)
-dt = 1.0   # Time step size (1 ms)
-steps = int(T / dt) 
-time = np.arange(0, T, dt)
+# --- Helper Function: Define Input Patterns (using 5ms duration fix) ---
+def generate_input_pattern(pattern_name, T_ms, dt):
+    steps = int(T_ms / dt)
+    currents = np.zeros((3, steps)) 
+    
+    burst_duration = 5 # 5 ms burst duration
+    
+    if pattern_name == 'A':
+        start_N0 = int(10/dt)
+        end_N0 = start_N0 + burst_duration
+        currents[0, start_N0:end_N0] = 5.0
+        
+        start_N1 = int(20/dt)
+        end_N1 = start_N1 + burst_duration
+        currents[1, start_N1:end_N1] = 5.0
+        
+    elif pattern_name == 'B':
+        start_N2 = int(15/dt)
+        end_N2 = start_N2 + burst_duration
+        currents[2, start_N2:end_N2] = 5.0
+        
+    return currents
 
-# === 2. Initialization ===
-pre_neuron = LIFNeuron(V_thresh=-50.0)
-post_neuron = LIFNeuron(V_thresh=-55.0)
-synapse = Synapse(initial_weight=0.1, eta=0.01, dopa_gate_thresh=0.4) 
+# --- Simulation Logic ---
+dt = 1.0 # ms
+network = MicroCircuit()
+dopa_gate_thresh = network.synapses[0].dopa_gate_thresh
 
-# New: Background current to keep the post-neuron potential high
-background_current_post = 1.6 # nA. This current alone is NOT enough to fire.
+# Parameters
+LEARNING_CYCLES = 100
+TESTING_CYCLES = 50
+T_CYCLE = 50 # ms per cycle
 
 # Data history arrays
-weight_history = []
-dopamine_history = []
+weight_history_A = [] 
+weight_history_B = [] 
+dopamine_cycle_history = [] # NEW: dopa levels history
 
-# Constant input to PRE-neuron to force regular spikes for testing STDP
-pre_input = np.ones(steps) * 2.0 
+print("--- Starting Learning Phase (Pattern A + Reward) ---")
 
-# === 3. Run Simulation Loop (Demonstrating the Gate) ===
-for t in range(steps):
-    current_time = t * dt
-    
-    # --- PHASE LOGIC: Simulating Dopamine Levels ---
-    dopa_level = 0.0
-    if current_time < 150:
-        # Phase 1: Low Dopamine (No Learning)
-        dopa_level = 0.1
-    elif current_time < 450:
-        # Phase 2: High Dopamine (Learning Enabled - Gate Open)
-        dopa_level = 0.8
-    else:
-        # Phase 3: Dopamine Decays (No Learning)
-        dopa_level = 0.2
+# --- PHASE 1: LEARNING (High Dopamine, Pattern A) ---
+for cycle in range(LEARNING_CYCLES):
+    input_A = generate_input_pattern('A', T_CYCLE, dt)
+    dopa_level = 0.8 # Reward! Gate Open
 
-    # --- A. Update Pre-synaptic Neuron ---
-    pre_spiked = pre_neuron.update(pre_input[t], dt)
-    
-    # --- B. Synaptic Transmission ---
-    synaptic_current = synapse.get_output_current(pre_spiked)
-    
-    # --- C. Update Post-synaptic Neuron (FIX: Adding background current) ---
-    # The Post-neuron now receives the synaptic signal PLUS the background current
-    post_input_total = synaptic_current + background_current_post 
-    post_spiked = post_neuron.update(post_input_total, dt)
-    
-    # --- D. Gated Learning (The Crucial Step) ---
-    synapse.update_traces(pre_spiked, post_spiked, dt, dopa_level)
+    for t in range(int(T_CYCLE / dt)):
+        network.update(input_A[:, t], dt, dopa_level, is_learning_phase=True)
     
     # Record data
-    weight_history.append(synapse.weight)
-    dopamine_history.append(dopa_level)
+    weight_history_A.append(network.synapses[0].weight) 
+    weight_history_B.append(network.synapses[4].weight) 
+    dopamine_cycle_history.append(dopa_level) # Record dopa level for this cycle
+    
+# --- PHASE 2: TESTING (Low Dopamine, Pattern B) ---
+print("--- Starting Testing Phase (Pattern B, No Learning) ---")
 
-# === 4. Visualization ===
-# (Visualization code remains the same as previous response)
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+for cycle in range(TESTING_CYCLES):
+    input_B = generate_input_pattern('B', T_CYCLE, dt)
+    dopa_level = 0.1 # No Reward! Gate Closed
+
+    for t in range(int(T_CYCLE / dt)):
+        network.update(input_B[:, t], dt, dopa_level, is_learning_phase=True) 
+
+    # Record data
+    weight_history_A.append(network.synapses[0].weight) 
+    weight_history_B.append(network.synapses[4].weight) 
+    dopamine_cycle_history.append(dopa_level) # Record dopa level for this cycle
+
+
+# --- Visualization (Two-Panel Plot) ---
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+total_cycles = LEARNING_CYCLES + TESTING_CYCLES
 
 # AXIS 1: Synaptic Weight Change (Learning Curve)
-ax1.plot(time, weight_history, color='blue', label='Synaptic Weight w')
-ax1.axvline(150, color='grey', linestyle='--', alpha=0.7)
-ax1.axvline(450, color='grey', linestyle='--', alpha=0.7)
-ax1.text(75, np.max(weight_history) * 1.05, 'Phase 1: No Learning', ha='center')
-ax1.text(300, np.max(weight_history) * 1.05, 'Phase 2: Learning Enabled (High Dopa)', ha='center')
-ax1.text(525, np.max(weight_history) * 1.05, 'Phase 3: No Learning', ha='center')
-ax1.set_title('Gated STDP: Learning Controlled by Dopamine Level')
+ax1.plot(range(total_cycles), weight_history_A, label='Weight N0 -> A (Targeted)', color='blue')
+ax1.plot(range(total_cycles), weight_history_B, label='Weight N2 -> A (Ignored)', color='red')
+ax1.axvline(LEARNING_CYCLES, color='grey', linestyle='--', label='End of Learning Phase')
+ax1.set_title('Gated STDP: Temporal Pattern Classification')
 ax1.set_ylabel('Synaptic Weight (w)')
 ax1.grid(True)
-ax1.legend(loc='lower right')
+ax1.legend()
 
-# AXIS 2: Dopamine Level
-ax2.plot(time, dopamine_history, color='g', label='Dopamine Level')
-ax2.axhline(synapse.dopa_gate_thresh, color='r', linestyle=':', label='Dopamine Gate Threshold')
-ax2.set_xlabel('Time (ms)')
+# AXIS 2: Dopamine Level (Gating)
+ax2.plot(range(total_cycles), dopamine_cycle_history, color='green', label='Dopamine Level')
+ax2.axhline(dopa_gate_thresh, color='red', linestyle=':', label='Gate Threshold')
+ax2.axvline(LEARNING_CYCLES, color='grey', linestyle='--') 
+ax2.set_xlabel('Learning Cycle')
 ax2.set_ylabel('Dopamine Level (Norm.)')
 ax2.grid(True)
-ax2.legend(loc='lower right')
+ax2.legend()
 
 plt.tight_layout()
 plt.show()
 
-print(f"Simulation fixed and finished. Final Synaptic Weight: {synapse.weight:.4f}")
+print("\n--- Final Network State (After Learning) ---")
+print(f"Weight N0 -> A (Target Pattern Component): {network.synapses[0].weight:.4f}")
+print(f"Weight N2 -> A (Ignored Pattern Component): {network.synapses[4].weight:.4f}")
