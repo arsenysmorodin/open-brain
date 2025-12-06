@@ -2,19 +2,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 from src.core.network import MicroCircuit
 from src.core.neurotransmitter_system import NeurotransmitterSystem 
-from src.adapters.audio_adapter import AudioAdapter # Импортируем наш новый адаптер
+from src.adapters.audio_adapter import AudioAdapter 
 
 # --- SETUP ---
-AUDIO_FILE = 'input.wav' # <--- Убедись, что файл лежит в папке!
+AUDIO_FILE = 'input.wav'
 dt = 1.0 # ms
-CHUNK_DURATION = 50 # ms (один цикл обучения = 50мс звука)
+CHUNK_DURATION = 50
+EMOTIONAL_INERTIA_ALPHA = 0.15
 
 # Initialize modules
 adapter = AudioAdapter(AUDIO_FILE, chunk_duration_ms=CHUNK_DURATION)
-audio_data = adapter.load_and_process() # Получаем данные из файла
+audio_data = adapter.load_and_process() 
 
 network = MicroCircuit()
-neuro_system = NeurotransmitterSystem() 
+neuro_system = NeurotransmitterSystem(alpha=EMOTIONAL_INERTIA_ALPHA) 
 
 # Data history arrays
 weight_history_N0A = [] # Low Freq -> A (Fear)
@@ -23,7 +24,7 @@ weight_history_N2A = [] # High Freq -> A (Fear)
 dopa_history = []
 adre_history = []
 
-print(f"--- Starting Simulation based on {AUDIO_FILE} ---")
+print(f"--- Starting Simulation based on {AUDIO_FILE} --- (alpha={EMOTIONAL_INERTIA_ALPHA})")
 
 # --- MAIN LOOP OVER AUDIO CHUNKS ---
 for chunk in audio_data:
@@ -35,7 +36,7 @@ for chunk in audio_data:
     signal = chunk['neuro_signal']
     
     # Reset chemicals slightly (decay) before adding new ones
-    neuro_system.decay(rate=0.05)
+    neuro_system.decay(rate=0.02)
     
     if signal['type'] == 'reward':
         # Music/Voice -> Dopamine Boost
