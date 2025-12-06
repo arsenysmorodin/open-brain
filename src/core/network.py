@@ -24,7 +24,7 @@ class MicroCircuit:
         # Background current to ensure output neurons are sensitive
         self.background_current = 2.5 
 
-    def update(self, input_currents, dt, dopamine_level, is_learning_phase=True):
+    def update(self, input_currents, dt, dopamine_level, adrenaline_level, is_learning_phase=True):
         """Runs one time step (dt) of the entire circuit."""
         
         # --- 1. Update Input Layer ---
@@ -47,22 +47,22 @@ class MicroCircuit:
         # --- 3. Update Output Layer and Apply Gated STDP ---
         output_spikes = []
         for j, neuron in enumerate(self.output_neurons):
-            
-            # Total current = Synaptic current + Background support
             total_current = output_currents[j] + self.background_current
             spiked = neuron.update(total_current, dt)
             output_spikes.append(spiked)
             
             # --- STDP Application (Learning) ---
             if is_learning_phase:
-                # Apply STDP to ALL incoming synapses for this output neuron
                 for i, pre_spiked in enumerate(input_spikes):
                     syn_index = (i * 2) + j
+                    
+                    # Passing BOTH modulators to the Synapse
                     self.synapses[syn_index].update_traces(
                         pre_spiked, 
                         spiked, 
                         dt, 
-                        dopamine_level
+                        dopamine_level, 
+                        adrenaline_level # NEW PARAMETER
                     )
 
         return output_spikes

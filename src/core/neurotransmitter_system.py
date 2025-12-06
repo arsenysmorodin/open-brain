@@ -1,26 +1,29 @@
 class NeurotransmitterSystem:
     """
-    Manages the global levels of neuromodulators (e.g., Dopamine, Serotonin).
-    These global levels affect the behavior of individual neurons in the network.
+    Manages the global levels of neuromodulators (Dopamine and Adrenaline/Norepinephrine).
     """
-    def __init__(self, initial_dopamine=0.1):
-        # Dopamine is crucial for reward-based learning and motivation
+    def __init__(self, initial_dopamine=0.1, initial_adrenaline=0.1):
+        # Dopamine (Reward/Pleasure)
         self.dopamine_level = initial_dopamine
+        # Adrenaline (Fear/Stress/Punishment)
+        self.adrenaline_level = initial_adrenaline
         
-    def get_dopamine(self):
-        """Returns the current dopamine level."""
-        return self.dopamine_level
+    def get_levels(self):
+        """Returns the current levels of both neuromodulators."""
+        return self.dopamine_level, self.adrenaline_level
 
-    def set_dopamine(self, level):
-        """Sets a new dopamine level, capping it within a defined range (0.0 to 1.0)."""
-        self.dopamine_level = max(0.0, min(1.0, level))
-        
+    # --- Dopamine Control ---
     def reward_hit(self, magnitude=0.7):
-        """Simulates a reward event (e.g., finding food), rapidly increasing dopamine."""
-        self.dopamine_level += magnitude
-        self.set_dopamine(self.dopamine_level) # Use setter to cap the level
+        """Simulates a reward event, rapidly increasing dopamine."""
+        self.dopamine_level = max(0.0, min(1.0, self.dopamine_level + magnitude))
         
+    # --- Adrenaline Control ---
+    def punishment_hit(self, magnitude=0.7):
+        """Simulates a punishment event, rapidly increasing adrenaline."""
+        self.adrenaline_level = max(0.0, min(1.0, self.adrenaline_level + magnitude))
+
+    # --- General Decay ---
     def decay(self, rate=0.005):
-        """Simulates the natural decay/reuptake of the neurotransmitter over time."""
-        self.dopamine_level -= rate
-        self.set_dopamine(self.dopamine_level) # Use setter to cap the level
+        """Simulates the natural decay of both neurotransmitters."""
+        self.dopamine_level = max(0.0, self.dopamine_level - rate)
+        self.adrenaline_level = max(0.0, self.adrenaline_level - rate)
